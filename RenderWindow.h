@@ -34,12 +34,12 @@ protected:
 
 	//The MVP matrix
     QMatrix4x4 m_proj;
-    //Rotation of the triangle
+    //Rotation angle of the triangle
     float m_rotation{ 0.0f };
 
 	//Vulkan resources:
     QVulkanWindow* m_window{ nullptr };
-    QVulkanDeviceFunctions *m_devFuncs{ nullptr };
+    QVulkanDeviceFunctions *m_deviceFunctions{ nullptr };
 
     VkDeviceMemory m_bufMem = VK_NULL_HANDLE;
     VkBuffer m_buf = VK_NULL_HANDLE;
