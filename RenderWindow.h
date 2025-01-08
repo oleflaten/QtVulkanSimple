@@ -10,7 +10,8 @@ public:
 
 	//Initializes the Vulkan resources needed, 
     // for instance the buffers
-    // the shaders
+	// vertex descriptions for the shaders
+    // making the shaders
     void initResources() override;
 
     //Set up resources - only MVP-matrix for now:
@@ -20,6 +21,7 @@ public:
 	void releaseSwapChainResources() override;
 
 	//Release Vulkan resources when program ends
+    //Called by Qt
     void releaseResources() override;
 
 	//Render the next frame

@@ -137,25 +137,30 @@ void RenderWindow::initResources()
     }
     m_devFuncs->vkUnmapMemory(dev, m_bufMem);
 
+
+    /********************************* Vertex layout: *********************************/
+
+	//The size of each vertex to be passed to the shader
     VkVertexInputBindingDescription vertexBindingDesc = {
     0, // binding
     6 * sizeof(float), // stride account for X, Y, Z, R, G, B
     VK_VERTEX_INPUT_RATE_VERTEX
     };
-
-    // location here has to correspond to the layout(location = x) in the shader
+    
+    /********************************* Shader bindings: *********************************/
+	//Descritpion of the attributes used in the shader
     VkVertexInputAttributeDescription vertexAttrDesc[] = {
         { // position
-            0, // location
+            0, // location has to correspond to the layout(location = x) in the shader
             0, // binding
             VK_FORMAT_R32G32B32_SFLOAT, // updated format to include Z
             0
         },
         { // color
-            1, // location
+            1, // location has to correspond to the layout(location = x) in the shader
             0,
             VK_FORMAT_R32G32B32_SFLOAT,
-            3 * sizeof(float) // updated offset to account for X, Y, Z
+            3 * sizeof(float) // offset to account for X, Y, Z
         }
     };
 
@@ -238,6 +243,7 @@ void RenderWindow::initResources()
     if (err != VK_SUCCESS)
         qFatal("Failed to create pipeline layout: %d", err);
 
+    /********************************* Create shaders *********************************/
     //Creates our actuall shader modules
     VkShaderModule vertShaderModule = createShader(QStringLiteral(":/color_vert.spv"));
     VkShaderModule fragShaderModule = createShader(QStringLiteral(":/color_frag.spv"));
@@ -460,10 +466,19 @@ void RenderWindow::startNextFrame()
     scissor.extent.height = viewport.height;
     m_devFuncs->vkCmdSetScissor(cb, 0, 1, &scissor);
 
+    /********************************* Our draw call!: *********************************/
     m_devFuncs->vkCmdDraw(cb, 3, 1, 0, 0);
 
     m_devFuncs->vkCmdEndRenderPass(cmdBuf);
 
+    /*QVulkanWindow subclasses queue their draw calls in their reimplementation of 
+    QVulkanWindowRenderer::startNextFrame(). Once done, they are required to call back 
+    QVulkanWindow::frameReady(). The example has no asynchronous command generation, so the 
+    frameReady() call is made directly from startNextFrame(). 
+    To get continuous updates, the example simply invokes QWindow::requestUpdate() in order to schedule a repaint.
+    This means that it requests the Qt window system to call the update() method, 
+    which will eventually lead to the paintEvent() being called.
+    */
     m_window->frameReady();
     m_window->requestUpdate(); // render continuously, throttled by the presentation rate
 }
