@@ -434,19 +434,19 @@ void RenderWindow::startNextFrame()
     VkCommandBuffer cmdBuf = m_window->currentCommandBuffer();
     m_deviceFunctions->vkCmdBeginRenderPass(cmdBuf, &rpBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-    quint8 *p;
+	quint8* GPUmemPointer;  //for vertex and uniform data
     VkResult err = m_deviceFunctions->vkMapMemory(dev, m_bufMem, m_uniformBufInfo[m_window->currentFrame()].offset,
-            UNIFORM_DATA_SIZE, 0, reinterpret_cast<void **>(&p));
+            UNIFORM_DATA_SIZE, 0, reinterpret_cast<void **>(&GPUmemPointer));
     if (err != VK_SUCCESS)
         qFatal("Failed to map memory: %d", err);
 
-    //Set the rotation in our matrix:
-    QMatrix4x4 m = m_proj;
-    m.rotate(m_rotation, 0, 1, 0);
-    memcpy(p, m.constData(), 16 * sizeof(float));
+    /********************************* Set the rotation in our matrix *********************************/
+    QMatrix4x4 tempMatrix = m_proj;
+    tempMatrix.rotate(m_rotation, 0, 1, 0);
+    memcpy(GPUmemPointer, tempMatrix.constData(), 16 * sizeof(float));
     m_deviceFunctions->vkUnmapMemory(dev, m_bufMem);
 
-    // Not exactly a real animation system, just advance on every frame for now.
+	//rotate the triangle 1 degree per frame
     m_rotation += 1.0f;
 
     m_deviceFunctions->vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, m_pipeline);
