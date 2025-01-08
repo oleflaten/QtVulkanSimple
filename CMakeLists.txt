@@ -5,10 +5,8 @@ find_package(Qt6 REQUIRED COMPONENTS Core Gui)
 
 qt_standard_project_setup()
 
-
-
 qt_add_executable(VulkanTriangle
-    trianglerenderer.cpp trianglerenderer.h
+    RenderWindow.cpp RenderWindow.h
     main.cpp
 )
 

@@ -1,18 +1,17 @@
-// Copyright (C) 2017 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
-
-#include "trianglerenderer.h"
+#include "RenderWindow.h"
 #include <QVulkanFunctions>
 #include <QFile>
 
-// Note that the vertex data and the projection matrix assume OpenGL. With
+// Vertex data and the projection matrix assume OpenGL's clip space.
 // Vulkan Y is negated in clip space and the near/far plane is at 0/1 instead
 // of -1/1. These will be corrected for by an extra transformation when
 // calculating the modelview-projection matrix.
-static float vertexData[] = { // Y up, front = CCW
-     0.0f,   0.5f,   1.0f, 0.0f, 0.0f,
-    -0.5f,  -0.5f,   0.0f, 1.0f, 0.0f,
-     0.5f,  -0.5f,   0.0f, 0.0f, 1.0f
+static float vertexData[] = { 
+    // Y up, front = CCW
+    // X,     Y,     Z,     R,    G,    B
+     0.0f,   0.5f,  0.0f,  1.0f, 0.0f, 0.0f,
+    -0.5f,  -0.5f,  0.0f,  0.0f, 1.0f, 0.0f,
+     0.5f,  -0.5f,  0.0f,  0.0f, 0.0f, 1.0f
 };
 
 static const int UNIFORM_DATA_SIZE = 16 * sizeof(float);
@@ -22,7 +21,7 @@ static inline VkDeviceSize aligned(VkDeviceSize v, VkDeviceSize byteAlign)
     return (v + byteAlign - 1) & ~(byteAlign - 1);
 }
 
-TriangleRenderer::TriangleRenderer(QVulkanWindow *w, bool msaa)
+RenderWindow::RenderWindow(QVulkanWindow *w, bool msaa)
     : m_window(w)
 {
     if (msaa) {
@@ -38,7 +37,7 @@ TriangleRenderer::TriangleRenderer(QVulkanWindow *w, bool msaa)
     }
 }
 
-VkShaderModule TriangleRenderer::createShader(const QString &name)
+VkShaderModule RenderWindow::createShader(const QString &name)
 {
     QFile file(name);
     if (!file.open(QIODevice::ReadOnly)) {
@@ -63,29 +62,29 @@ VkShaderModule TriangleRenderer::createShader(const QString &name)
     return shaderModule;
 }
 
-void TriangleRenderer::initResources()
+void RenderWindow::initResources()
 {
     qDebug("initResources");
 
     VkDevice dev = m_window->device();
     m_devFuncs = m_window->vulkanInstance()->deviceFunctions(dev);
 
-    // Prepare the vertex and uniform data. The vertex data will never
-    // change so one buffer is sufficient regardless of the value of
-    // QVulkanWindow::CONCURRENT_FRAME_COUNT. Uniform data is changing per
-    // frame however so active frames have to have a dedicated copy.
+    /* Prepare the vertex and uniform data.The vertex data will never
+    change so one buffer is sufficient regardless of the value of
+    QVulkanWindow::CONCURRENT_FRAME_COUNT. Uniform data is changing per
+    frame however so active frames have to have a dedicated copy.
 
-    // Use just one memory allocation and one buffer. We will then specify the
-    // appropriate offsets for uniform buffers in the VkDescriptorBufferInfo.
-    // Have to watch out for
-    // VkPhysicalDeviceLimits::minUniformBufferOffsetAlignment, though.
+    Use just one memory allocation and one buffer. We will then specify the
+    appropriate offsets for uniform buffers in the VkDescriptorBufferInfo.
+    Have to watch out for
+    VkPhysicalDeviceLimits::minUniformBufferOffsetAlignment, though.
 
-    // The uniform buffer is not strictly required in this example, we could
-    // have used push constants as well since our single matrix (64 bytes) fits
-    // into the spec mandated minimum limit of 128 bytes. However, once that
-    // limit is not sufficient, the per-frame buffers, as shown below, will
-    // become necessary.
-
+    The uniform buffer is not strictly required in this example, we could
+    have used push constants as well since our single matrix (64 bytes) fits
+    into the spec mandated minimum limit of 128 bytes. However, once that
+    limit is not sufficient, the per-frame buffers, as shown below, will
+    become necessary.
+    */
     const int concurrentFrameCount = m_window->concurrentFrameCount();
     const VkPhysicalDeviceLimits *pdevLimits = &m_window->physicalDeviceProperties()->limits;
     const VkDeviceSize uniAlign = pdevLimits->minUniformBufferOffsetAlignment;
@@ -93,6 +92,7 @@ void TriangleRenderer::initResources()
     VkBufferCreateInfo bufInfo;
     memset(&bufInfo, 0, sizeof(bufInfo));
     bufInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+
     // Our internal layout is vertex, uniform, uniform, ... with each uniform buffer start offset aligned to uniAlign.
     const VkDeviceSize vertexAllocSize = aligned(sizeof(vertexData), uniAlign);
     const VkDeviceSize uniformAllocSize = aligned(UNIFORM_DATA_SIZE, uniAlign);
@@ -138,22 +138,24 @@ void TriangleRenderer::initResources()
     m_devFuncs->vkUnmapMemory(dev, m_bufMem);
 
     VkVertexInputBindingDescription vertexBindingDesc = {
-        0, // binding
-        5 * sizeof(float),
-        VK_VERTEX_INPUT_RATE_VERTEX
+    0, // binding
+    6 * sizeof(float), // stride account for X, Y, Z, R, G, B
+    VK_VERTEX_INPUT_RATE_VERTEX
     };
+
+    // location here has to correspond to the layout(location = x) in the shader
     VkVertexInputAttributeDescription vertexAttrDesc[] = {
         { // position
             0, // location
             0, // binding
-            VK_FORMAT_R32G32_SFLOAT,
+            VK_FORMAT_R32G32B32_SFLOAT, // updated format to include Z
             0
         },
         { // color
-            1,
+            1, // location
             0,
             VK_FORMAT_R32G32B32_SFLOAT,
-            2 * sizeof(float)
+            3 * sizeof(float) // updated offset to account for X, Y, Z
         }
     };
 
@@ -236,7 +238,7 @@ void TriangleRenderer::initResources()
     if (err != VK_SUCCESS)
         qFatal("Failed to create pipeline layout: %d", err);
 
-    // Shaders
+    //Creates our actuall shader modules
     VkShaderModule vertShaderModule = createShader(QStringLiteral(":/color_vert.spv"));
     VkShaderModule fragShaderModule = createShader(QStringLiteral(":/color_frag.spv"));
 
@@ -341,7 +343,7 @@ void TriangleRenderer::initResources()
         m_devFuncs->vkDestroyShaderModule(dev, fragShaderModule, nullptr);
 }
 
-void TriangleRenderer::initSwapChainResources()
+void RenderWindow::initSwapChainResources()
 {
     qDebug("initSwapChainResources");
 
@@ -352,12 +354,12 @@ void TriangleRenderer::initSwapChainResources()
     m_proj.translate(0, 0, -4);
 }
 
-void TriangleRenderer::releaseSwapChainResources()
+void RenderWindow::releaseSwapChainResources()
 {
     qDebug("releaseSwapChainResources");
 }
 
-void TriangleRenderer::releaseResources()
+void RenderWindow::releaseResources()
 {
     qDebug("releaseResources");
 
@@ -399,13 +401,14 @@ void TriangleRenderer::releaseResources()
     }
 }
 
-void TriangleRenderer::startNextFrame()
+void RenderWindow::startNextFrame()
 {
     VkDevice dev = m_window->device();
     VkCommandBuffer cb = m_window->currentCommandBuffer();
     const QSize sz = m_window->swapChainImageSize();
 
-    VkClearColorValue clearColor = {{ 0, 0, 0, 1 }};
+	//Backtgound color of the render window
+    VkClearColorValue clearColor = {{ 0.3, 0.3, 0.3, 1 }};
     VkClearDepthStencilValue clearDS = { 1, 0 };
     VkClearValue clearValues[3];
     memset(clearValues, 0, sizeof(clearValues));
